@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Auth API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-section { margin-bottom: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        input { width: 200px; padding: 8px; margin: 5px 0; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #result { margin-top: 20px; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Тест API авторизации</h1>
+    
+    <div class="form-section">
+        <h2>📝 Регистрация</h2>
+        <form id="registerForm">
+            <input type="text" id="firstname" placeholder="Имя" value="Тест" required><br>
+            <input type="text" id="lastname" placeholder="Фамилия" value="Пользователь" required><br>
+            <input type="email" id="email" placeholder="Email" value="test@example.com" required><br>
+            <input type="text" id="company" placeholder="Компания" value="Тестовая компания"><br>
+            <input type="password" id="password" placeholder="Пароль" value="password123" required><br>
+            <button type="submit">Зарегистрироваться</button>
+        </form>
+    </div>
+
+    <div class="form-section">
+        <h2>🔑 Авторизация</h2>
+        <form id="loginForm">
+            <input type="email" id="loginEmail" placeholder="Email" value="test@example.com" required><br>
+            <input type="password" id="loginPassword" placeholder="Пароль" value="password123" required><br>
+            <button type="submit">Войти</button>
+        </form>
+    </div>
+    
+    <div id="result"></div>
+    <div id="status" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+        <strong>Статус:</strong> Готов к тестированию
+    </div>
+
+    <script>
+        // Функция для обновления статуса
+        function updateStatus(message, type = 'info') {
+            const statusElement = document.getElementById('status');
+            const colors = {
+                info: '#f0f0f0',
+                success: '#d4edda',
+                error: '#f8d7da',
+                warning: '#fff3cd'
+            };
+            statusElement.style.background = colors[type];
+            statusElement.innerHTML = `<strong>Статус:</strong> ${message}`;
+        }
+
+        // Функция для показа результата
+        function showResult(data, success = true) {
+            const resultElement = document.getElementById('result');
+            resultElement.className = success ? 'success' : 'error';
+            resultElement.innerHTML = 
+                `<h3>${success ? '✅ Успех!' : '❌ Ошибка!'}</h3>` +
+                `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+
+        // Функция для безопасного fetch с обработкой ошибок
+        async function safeFetch(url, options) {
+            updateStatus('Отправляем запрос...', 'info');
+            
+            try {
+                console.log('🚀 Отправляем запрос:', url, options);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 секунд таймаут
+                
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                const contentType = response.headers.get('content-type');
+                let result;
+                
+                if (contentType && contentType.includes('application/json')) {
+                    result = await response.json();
+                } else {
+                    const text = await response.text();
+                    result = { message: text, status: response.status };
+                }
+                
+                console.log('📨 Получен ответ:', result);
+                
+                if (response.ok) {
+                    updateStatus('Запрос выполнен успешно', 'success');
+                    showResult(result, true);
+                } else {
+                    updateStatus(`Ошибка HTTP ${response.status}`, 'error');
+                    showResult(result, false);
+                }
+                
+                return result;
+                
+            } catch (error) {
+                console.error('💥 Ошибка:', error);
+                
+                let errorMessage = 'Неизвестная ошибка';
+                
+                if (error.name === 'AbortError') {
+                    errorMessage = 'Превышено время ожидания ответа';
+                } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Не удалось подключиться к серверу. Проверьте, что backend запущен на http://localhost:3001';
+                } else {
+                    errorMessage = error.message;
+                }
+                
+                updateStatus(errorMessage, 'error');
+                showResult({ error: errorMessage, details: error.toString() }, false);
+                
+                return { error: errorMessage };
+            }
+        }
+
+        // Обработчик регистрации
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                firstname: document.getElementById('firstname').value,
+                lastname: document.getElementById('lastname').value,
+                email: document.getElementById('email').value,
+                company: document.getElementById('company').value,
+                password: document.getElementById('password').value
+            };
+            
+            await safeFetch('http://localhost:3001/api/auth/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+        });
+
+        // Обработчик авторизации
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                email: document.getElementById('loginEmail').value,
+                password: document.getElementById('loginPassword').value
+            };
+            
+            const result = await safeFetch('http://localhost:3001/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+
+            // Сохраняем токен, если авторизация успешна
+            if (result && result.token) {
+                localStorage.setItem('authToken', result.token);
+                updateStatus('Авторизация успешна! Токен сохранен.', 'success');
+            }
+        });
+
+        // Проверяем статус сервера при загрузке страницы
+        window.addEventListener('load', async () => {
+            updateStatus('Проверяем подключение к серверу...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/test', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
+                if (response.ok) {
+                    updateStatus('✅ Сервер доступен и готов к работе', 'success');
+                } else {
+                    updateStatus('⚠️ Сервер отвечает с ошибкой', 'warning');
+                }
+            } catch (error) {
+                updateStatus('❌ Сервер недоступен. Убедитесь, что backend запущен на порту 3001', 'error');
+            }
+        });
+
+        // Обработка ошибок расширений браузера
+        window.addEventListener('error', (event) => {
+            if (event.message && event.message.includes('message channel closed')) {
+                console.warn('⚠️ Обнаружена ошибка расширения браузера (игнорируется):', event.message);
+                // Не показываем эту ошибку пользователю, так как она не критична
+                return true; // Предотвращаем дальнейшую обработку
+            }
+        });
+
+    </script>
+</body>
+</html>
